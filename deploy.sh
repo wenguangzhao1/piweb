@@ -60,10 +60,7 @@ done
 
 # ---------- 默认值处理 ----------
 DEPLOY_HOSTNAME="${DEPLOY_HOSTNAME:-$(hostname)}"
-if [[ -z "$DEPLOY_PASSWORD" ]]; then
-  DEPLOY_PASSWORD=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 8)
-  info "未指定 WiFi 密码，已生成随机密码: ${BOLD}${DEPLOY_PASSWORD}${NC}"
-fi
+# 开放热点，无需密码
 
 if [[ -z "$DEPLOY_USER" ]]; then
   die "无法确定运行用户，请使用 --user 指定"
@@ -98,13 +95,24 @@ fi
 info "安装系统包..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-for pkg in nginx hostapd dnsmasq libssl3 iproute2; do
+for pkg in nginx hostapd dnsmasq libssl3t64 iproute2; do
   if dpkg -s "$pkg" &>/dev/null; then
     ok "$pkg 已安装"
   else
     apt-get install -y -qq "$pkg" >/dev/null 2>&1 && ok "已安装 $pkg" || warn "$pkg 安装失败，继续..."
   fi
 done
+
+# ---------- 释放 wlan0 控制权 ----------
+info "配置 NetworkManager 忽略 wlan0..."
+nmcli dev set wlan0 managed no 2>/dev/null || true
+cat > /etc/NetworkManager/conf.d/unmanage-wlan0.conf << 'NMEOF'
+[device-wlan0]
+match-device=interface-name:wlan0
+unmanaged=1
+NMEOF
+systemctl reload NetworkManager 2>/dev/null || true
+ok "wlan0 已从 NetworkManager 释放"
 
 # ---------- 生成 SSL 证书 ----------
 SSL_DIR="/etc/ssl/private"
@@ -131,10 +139,6 @@ channel=7
 wmm_enabled=0
 auth_algs=1
 ignore_broadcast_ssid=0
-wpa=2
-wpa_passphrase=${DEPLOY_PASSWORD}
-wpa_key_mgmt=WPA-PSK
-rsn_pairwise=CCMP
 HOSTAPDEOF
 
 # 确保 DAEMON_CONF 已设置
@@ -148,7 +152,7 @@ fi
 HOTSPOT_SUBNET="${DEPLOY_HOTSPOT_IP%.*}"
 cat > /etc/dnsmasq.conf << DNSMASQEOF
 interface=wlan0
-dhcp-range=${DEPLOY_HOTSPOT_IP}.2,${DEPLOY_HOTSPOT_IP}.20,255.255.255.0,24h
+dhcp-range=${HOTSPOT_SUBNET}.2,${HOTSPOT_SUBNET}.20,255.255.255.0,24h
 dhcp-option=3,${DEPLOY_HOTSPOT_IP}
 dhcp-option=6,${DEPLOY_HOTSPOT_IP}
 server=8.8.8.8
@@ -656,7 +660,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'rfkill unblock wifi && ip link set wlan0 up && hostapd -B /etc/hostapd/hostapd.conf && sleep 1 && dnsmasq && echo 1 > /proc/sys/net/ipv4/ip_forward && nft add table ip nat 2>/dev/null && nft add chain ip nat postrouting "{ type nat hook postrouting priority 100; policy accept; }" 2>/dev/null && nft add rule ip nat postrouting oifname "eth0" masquerade 2>/dev/null && nft add chain ip nat forward "{ type filter hook forward priority 0; policy accept; }" 2>/dev/null && nft add rule ip nat forward iifname "wlan0" accept 2>/dev/null && nft add rule ip nat forward oifname "wlan0" ct state established,related accept 2>/dev/null'
+ExecStart=/bin/sh -c 'rfkill unblock wifi && nmcli dev set wlan0 managed no 2>/dev/null || true && ip link set wlan0 up && hostapd -B /etc/hostapd/hostapd.conf && sleep 1 && dnsmasq && echo 1 > /proc/sys/net/ipv4/ip_forward && nft add table ip nat 2>/dev/null && nft add chain ip nat postrouting "{ type nat hook postrouting priority 100; policy accept; }" 2>/dev/null && nft add rule ip nat postrouting oifname "eth0" masquerade 2>/dev/null && nft add chain ip nat forward "{ type filter hook forward priority 0; policy accept; }" 2>/dev/null && nft add rule ip nat forward iifname "wlan0" accept 2>/dev/null && nft add rule ip nat forward oifname "wlan0" ct state established,related accept 2>/dev/null'
 RemainAfterExit=yes
 
 [Install]
@@ -691,7 +695,7 @@ echo -e "${BOLD}========================================${NC}"
 echo ""
 echo -e "  ${CYAN}WiFi 热点:${NC}"
 echo -e "    SSID:     ${BOLD}${DEPLOY_SSID}${NC}"
-echo -e "    密码:     ${BOLD}${DEPLOY_PASSWORD}${NC}"
+echo -e "    密码:     ${BOLD}无 (开放网络)${NC}"
 echo -e "    热点 IP:  ${BOLD}${DEPLOY_HOTSPOT_IP}${NC}"
 echo ""
 echo -e "  ${CYAN}服务状态:${NC}"

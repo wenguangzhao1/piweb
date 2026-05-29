@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>smp5b09 - 硬件配置</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 24px 16px 40px;
+        }
+        .container { max-width: 640px; margin: 0 auto; }
+        .header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .header h1 {
+            font-size: 1.8em;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        .header .model {
+            color: #8ecfff;
+            font-size: 1.05em;
+        }
+        .section {
+            background: rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .section h2 {
+            font-size: 1em;
+            color: #8ecfff;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section h2 .icon { font-size: 1.2em; }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .row:last-child { border-bottom: none; }
+        .row .label { color: #999; font-size: 0.9em; }
+        .row .value {
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.95em;
+            text-align: right;
+            max-width: 55%;
+            word-break: break-all;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        .badge-green { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .badge-blue { background: rgba(142,207,255,0.15); color: #8ecfff; }
+        .status-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+        .status-up { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+        .status-down { background: #f44336; box-shadow: 0 0 6px #f44336; }
+        .loading { color: #666; text-align: center; padding: 40px; }
+        .error { color: #f44336; text-align: center; padding: 20px; background: rgba(244,67,54,0.1); border-radius: 8px; margin: 16px 0; }
+        footer {
+            text-align: center;
+            color: #555;
+            font-size: 0.8em;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>smp5b09</h1>
+            <div class="model" id="model">加载中...</div>
+        </div>
+
+        <div id="content" style="display:none">
+            <div class="section">
+                <h2><span class="icon">&#x1F50C;</span> 处理器</h2>
+                <div class="row">
+                    <span class="label">芯片</span>
+                    <span class="value" id="cpu-chip">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">核心</span>
+                    <span class="value" id="cpu-cores">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">架构</span>
+                    <span class="value" id="cpu-arch">-</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span class="icon">&#x1F4BE;</span> 内存与存储</h2>
+                <div class="row">
+                    <span class="label">内存</span>
+                    <span class="value" id="mem-total">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">存储</span>
+                    <span class="value" id="storage-list">-</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span class="icon">&#x1F310;</span> 网络</h2>
+                <div class="row">
+                    <span class="label">以太网</span>
+                    <span class="value" id="net-eth">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">WiFi 热点</span>
+                    <span class="value" id="net-wlan">-</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span class="icon">&#x2699;</span> 系统信息</h2>
+                <div class="row">
+                    <span class="label">操作系统</span>
+                    <span class="value" id="os-name">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">内核版本</span>
+                    <span class="value" id="os-kernel">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">序列号</span>
+                    <span class="value" id="serial">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">设备编号</span>
+                    <span class="value" id="revision">-</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2><span class="icon">&#x23F1;</span> 实时状态</h2>
+                <div class="row">
+                    <span class="label">运行时间</span>
+                    <span class="value" id="rt-uptime">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">CPU 温度</span>
+                    <span class="value" id="rt-temp">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">内存使用</span>
+                    <span class="value" id="rt-mem">-</span>
+                </div>
+                <div class="row">
+                    <span class="label">磁盘使用</span>
+                    <span class="value" id="rt-disk">-</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="error" class="error" style="display:none"></div>
+    </div>
+
+    <footer>&#x2713; smp5b09 热点服务运行中 &mdash; <span id="clock"></span></footer>
+
+    <script>
+        document.getElementById('clock').textContent = new Date().toLocaleString('zh-CN');
+
+        async function load() {
+            try {
+                const [hw, info] = await Promise.all([
+                    fetch('/api/hardware').then(r => r.json()),
+                    fetch('/api/info').then(r => r.json())
+                ]);
+
+                document.getElementById('model').textContent = hw.model;
+
+                // CPU
+                document.getElementById('cpu-chip').textContent = hw.cpu.chip;
+                document.getElementById('cpu-cores').textContent = hw.cpu.cores + ' 核 ' + hw.cpu.model;
+                document.getElementById('cpu-arch').textContent = hw.cpu.architecture;
+
+                // Memory & Storage
+                document.getElementById('mem-total').textContent = hw.memory.total;
+                var storEl = document.getElementById('storage-list');
+                storEl.innerHTML = hw.storage.filter(function(s) {
+                    return s.type === 'disk' && s.name.indexOf('zram') !== 0;
+                }).map(function(s) {
+                    var parts = (s.partitions || []).map(function(p) {
+                        var mp = p.mountpoint || '';
+                        return p.name + ' ' + p.size +
+                            (mp ? ' <span class="badge badge-blue">' + mp + '</span>' : '');
+                    }).join(' ');
+                    return s.name + ' ' + s.size + ' ' + parts;
+                }).join('<br>');
+
+                // Network
+                var eth = hw.network['eth0'] || {};
+                document.getElementById('net-eth').innerHTML =
+                    '<span class="status-dot ' + (eth.state === 'UP' ? 'status-up' : 'status-down') + '"></span> ' +
+                    (eth.addrs ? eth.addrs.filter(function(a) { return a.indexOf('.') !== -1; }).join(', ') : '-') +
+                    (eth.state === 'UP' ? ' <span class="badge badge-green">UP</span>' : '');
+
+                var wlan = hw.network['wlan0'] || {};
+                document.getElementById('net-wlan').innerHTML =
+                    '<span class="status-dot ' + (wlan.state === 'UP' ? 'status-up' : 'status-down') + '"></span> ' +
+                    (wlan.addrs ? wlan.addrs.join(', ') : '-') +
+                    (wlan.state === 'UP' ? ' <span class="badge badge-green">UP</span>' : '');
+
+                // System
+                document.getElementById('os-name').textContent = hw.os.name;
+                document.getElementById('os-kernel').textContent = hw.os.kernel;
+                document.getElementById('serial').textContent = hw.serial || '-';
+                document.getElementById('revision').textContent = hw.revision || '-';
+
+                // Real-time
+                document.getElementById('rt-uptime').textContent = info.uptime;
+                document.getElementById('rt-temp').textContent = info.cpu_temp;
+                document.getElementById('rt-mem').textContent = info.memory;
+                document.getElementById('rt-disk').textContent = info.disk;
+
+                document.getElementById('content').style.display = 'block';
+            } catch(e) {
+                document.getElementById('error').textContent = '加载失败: ' + e.message;
+                document.getElementById('error').style.display = 'block';
+            }
+        }
+
+        load();
+    </script>
+</body>
+</html>

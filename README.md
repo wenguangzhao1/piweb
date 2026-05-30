@@ -7,7 +7,7 @@
 将本项目拷贝到新树莓派，运行：
 
 ```bash
-sudo bash deploy.sh --ssid MyHotspot --password MyPass123
+sudo bash deploy/deploy.sh --ssid MyHotspot --password MyPass123
 ```
 
 脚本会自动完成：安装系统包、生成 SSL 证书、配置热点、部署项目、安装服务、启动服务。
@@ -18,35 +18,28 @@ sudo bash deploy.sh --ssid MyHotspot --password MyPass123
 |------|----------|--------|------|
 | `--hostname` | `$DEPLOY_HOSTNAME` | 自动检测 | 主机名 |
 | `--ssid` | `$DEPLOY_SSID` | `PiHotspot` | WiFi 名称 |
-| `--password` | `$DEPLOY_PASSWORD` | 8 位随机 | WiFi 密码 |
+| `--password` | `$DEPLOY_PASSWORD` | (none) | WiFi 密码（空=开放网络） |
 | `--ip` | `$DEPLOY_HOTSPOT_IP` | `192.168.4.1` | 热点 IP |
 | `--user` | `$DEPLOY_USER` | `$SUDO_USER` | 运行 API 的用户 |
 | `--project-dir` | `$DEPLOY_PROJECT_DIR` | `/home/$user/zw` | 项目目录 |
+| `--interface` | `$DEPLOY_INTERFACE` | `wlan0` | WiFi 接口 |
+| `--channel` | `$DEPLOY_CHANNEL` | `7` | WiFi 信道 |
 
 ### 使用方式
 
 ```bash
 # 基本用法
-sudo bash deploy.sh --ssid MyHotspot
+sudo bash deploy/deploy.sh --ssid MyHotspot
 
 # 完整参数
-sudo bash deploy.sh --hostname mypi --ssid MyHotspot --password MyPass123 --ip 192.168.4.1
+sudo bash deploy/deploy.sh --hostname mypi --ssid MyHotspot --password MyPass123 --ip 192.168.4.1
 
 # 环境变量
-sudo DEPLOY_HOSTNAME=mypi DEPLOY_SSID=MyHotspot bash deploy.sh
+sudo DEPLOY_HOSTNAME=mypi DEPLOY_SSID=MyHotspot bash deploy/deploy.sh
 
-# 从 URL 下载执行（需提前托管 deploy.sh）
-curl -sSL https://example.com/deploy.sh | sudo bash /dev/stdin --ssid MyHotspot
-
-# 查看帮助
-bash deploy.sh --help
+# 兼容入口（旧版调用方式仍支持）
+sudo bash deploy.sh --ssid MyHotspot
 ```
-
-### 获取脚本
-
-- **git clone**：`git clone <repo> && cd zw && sudo bash deploy.sh --ssid MyHotspot`
-- **scp**：`scp -r zw/ pi@<ip>:/home/pi/ && ssh pi@<ip> 'sudo bash /home/pi/zw/deploy.sh'`
-- **curl**：将 deploy.sh 托管到可访问的 URL，一行命令执行
 
 部署完成后连接 WiFi，浏览器打开 `http://192.168.4.1` 即可看到硬件配置页面。
 
@@ -55,45 +48,67 @@ bash deploy.sh --help
 ## 架构
 
 ```
-客户端 ──(WiFi)──▶ wlan0 (192.168.4.1)
-                        │
-              hostapd + dnsmasq
-              (热点 + DHCP + DNS 通配)
-                        │
-              nginx (80/443) ──▶ /api/* → 127.0.0.1:8080
-                        │                    │
-              静态页面             python3 server.py
-              (index.html)              (HTTP API)
-                        │
-              eth0 ──(NAT)──▶ 互联网
+客户端 ──(WiFi wlan0)──▶ hostapd + dnsmasq (192.168.4.1)
+                              │
+                         nginx (:80/:443)
+                              ├── static: / → index.html (硬件配置页)
+                              └── proxy:  /api/* → 127.0.0.1:8080 (server.py)
+                              │
+                         eth0 ──(NAT)──▶ 互联网
 ```
+
+### 服务清单
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| `hostapd.service` | - | WiFi AP，广播 SSID |
+| `dnsmasq.service` | UDP 67/53 | DHCP + DNS 通配（Captive Portal） |
+| `hotspot-start.service` | - | wlan0 IP、IP 转发、NAT 规则 |
+| `api-server.service` | 127.0.0.1:8080 | Python HTTP API |
+| `nginx` | 80/443 | 静态文件 + API 反代 |
 
 ## 文件结构
 
 ```
 /home/msj/zw/
-├── deploy.sh          # 一键部署脚本（自包含，嵌入所有配置）
-├── api/server.py      # Python3 HTTP API（无需外部依赖）
-├── www/index.html     # 硬件配置展示首页
-└── www/test.html      # 连通性测试页
+├── .claude/
+│   └── skills/
+│       └── pi-hotspot.md      # Claude Code Skill 定义
+├── deploy/                    # 自包含部署包
+│   ├── deploy.sh              # 一键部署脚本
+│   ├── files/
+│   │   ├── server.py          # API 服务器
+│   │   ├── index.html         # 硬件配置页
+│   │   └── test.html          # 连通性测试
+│   └── templates/
+│       ├── hostapd.conf.tpl   # 热点配置模板
+│       ├── dnsmasq.conf.tpl   # DHCP 配置模板
+│       └── nginx.conf.tpl     # Web 服务器配置模板
+├── api/
+│   └── server.py              # 源码（部署源文件）
+├── www/
+│   ├── index.html             # UI 页面（部署源文件）
+│   └── test.html              # 测试页
+├── deploy.sh                  # 兼容入口 → deploy/deploy.sh
+├── README.md
+└── .gitignore
 ```
 
 ## API 接口
 
 ### `GET /api/hardware` — 硬件配置
 
-返回设备硬件信息（静态，重启后不变）：
+返回设备硬件信息（静态）：
 
 ```json
 {
-  "model": "Raspberry Pi 5 Model B Rev 1.1",
-  "revision": "b04171",
-  "serial": "<设备序列号>",
+  "model": "Raspberry Pi 5 Model B Rev 1.0",
+  "serial": "708ffe5dbe43a1d8",
   "cpu": { "chip": "BCM2712", "cores": 4, "model": "Cortex-A76", "architecture": "AArch64 (ARMv8)" },
-  "memory": { "total_kb": 2059008, "total": "2.0 GB" },
-  "storage": [{ "name": "nvme0n1", "size": "238.5G", "type": "disk", "partitions": [...] }],
-  "os": { "name": "Debian GNU/Linux 13 (trixie)", "kernel": "6.12.75+rpt-rpi-2712" },
-  "network": { "eth0": { "state": "UP", "addrs": ["192.168.1.12/24"] }, "wlan0": { ... } }
+  "memory": { "total_kb": 8251776, "total": "7.9 GB" },
+  "storage": [...],
+  "os": { "name": "Debian GNU/Linux 13 (trixie)", "kernel": "6.18.29+rpt-rpi-2712" },
+  "network": { "eth0": { "state": "UP", "addrs": ["192.168.1.13/24"] } }
 }
 ```
 
@@ -103,150 +118,70 @@ bash deploy.sh --help
 
 ```json
 {
-  "hostname": "<主机名>",
-  "uptime": "1d 2h 35m",
-  "memory": "739/2010 MB",
-  "disk": "7.4G",
-  "cpu_temp": "52.9 °C",
+  "hostname": "smp5b05",
+  "uptime": "0d 0h 8m",
+  "memory": "887/8058 MB",
+  "disk": "33G",
+  "cpu_temp": "58.4 °C",
   "client_ip": "192.168.4.5"
 }
 ```
 
-## 手动部署参考
+## Claude Code Skill
 
-> 推荐使用 `deploy.sh` 一键部署。以下仅为脚本内部逻辑的详细说明，供排查问题或手动操作参考。
-
-### 1. 系统准备
-
-- Debian 13 (trixie) arm64（或 Debian Bookworm）
-- 安装依赖：`apt install nginx hostapd dnsmasq`
-- SSL 自签证书：
-  ```bash
-  openssl req -x509 -nodes -days 3650 \
-    -newkey rsa:2048 \
-    -keyout /etc/ssl/private/captive.key \
-    -out /etc/ssl/private/captive.crt \
-    -subj "/CN=<主机名>"
-  ```
-
-### 2. 部署项目代码
-
-```bash
-# 默认安装到 /home/<user>/zw/
-mkdir -p /home/<user>/zw/{api,www}
-# 将 api/server.py 放入 <project-dir>/api/
-# 将 www/index.html 和 www/test.html 放入 <project-dir>/www/
-```
-
-### 3. 配置 WiFi 热点
-
-**/etc/hostapd/hostapd.conf**
-```
-interface=wlan0
-driver=nl80211
-ssid=<你的 SSID>
-hw_mode=g
-channel=7
-wmm_enabled=0
-auth_algs=1
-ignore_broadcast_ssid=0
-wpa=2
-wpa_passphrase=<你的密码>
-wpa_key_mgmt=WPA-PSK
-rsn_pairwise=CCMP
-```
-
-**/etc/dnsmasq.conf**
-```
-interface=wlan0
-dhcp-range=192.168.4.2,192.168.4.20,255.255.255.0,24h
-dhcp-option=3,192.168.4.1
-dhcp-option=6,192.168.4.1
-server=8.8.8.8
-address=/#/192.168.4.1    # 通配 DNS → Captive Portal
-```
-
-**/etc/default/hostapd** 设置 `DAEMON_CONF="/etc/hostapd/hostapd.conf"`。
-
-### 4. 配置 nginx
-
-将 `/etc/nginx/sites-available/default` 替换为以下配置，关键点是：
-- 根目录指向 `<project-dir>/www`
-- `/api/` 反代到 `127.0.0.1:8080`
-- Captive Portal 专用路径：`/hotspot-detect.html`、`/generate_204`、`/connecttest.txt`、`/ncsi.txt`
-- 443 端口 SSL 配置同上
-
-### 5. systemd 服务
-
-**/etc/systemd/system/api-server.service**
-```ini
-[Unit]
-Description=API Server for Hotspot
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=<user>
-WorkingDirectory=<project-dir>/api
-ExecStart=/usr/bin/python3 <project-dir>/api/server.py
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-`systemctl enable api-server.service && systemctl start api-server.service`
-
-**/etc/systemd/system/hotspot-start.service**
-```ini
-[Unit]
-Description=Start WiFi Hotspot
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c 'rfkill unblock wifi && ip link set wlan0 up && hostapd -B /etc/hostapd/hostapd.conf && sleep 1 && dnsmasq && echo 1 > /proc/sys/net/ipv4/ip_forward && nft add table ip nat 2>/dev/null && nft add chain ip nat postrouting "{ type nat hook postrouting priority 100; policy accept; }" && nft add rule ip nat postrouting oifname "eth0" masquerade && nft add chain ip nat forward "{ type filter hook forward priority 0; policy accept; }" && nft add rule ip nat forward iifname "wlan0" accept && nft add rule ip nat forward oifname "wlan0" ct state established,related accept'
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-```
-`systemctl enable hotspot-start.service && systemctl start hotspot-start.service`
-
-**nginx**：`systemctl enable nginx && systemctl restart nginx`
+在部署到新树莓派时，Claude Code 会自动加载 `.claude/skills/pi-hotspot.md` 中的 skill 定义，按照标准化流程执行部署和验证。
 
 ## Captive Portal 原理
 
 | 平台 | 检测 URL | 响应 |
 |------|----------|------|
-| iOS | `/hotspot-detect.html` | 返回完整 HTML 页面（触发弹出浏览器） |
-| Android | `/generate_204` | HTTP 204（表示正常联网） |
+| iOS | `/hotspot-detect.html` | 返回完整 HTML（触发弹出浏览器） |
+| Android | `/generate_204` | HTTP 204 |
 | Windows | `/connecttest.txt` | `Success` |
 | Windows | `/ncsi.txt` | `Microsoft NCSI` |
 
 配合 dnsmasq `address=/#/192.168.4.1` 通配 DNS，任何域名请求都会被路由到本机 nginx。
 
-## 自定义配置
+## 排查问题
 
-使用 `deploy.sh` 时，以下参数通过命令行传入，无需修改源码：
+### wlan0 没有广播 SSID
 
-| 变量 | deploy.sh 参数 | 默认值 |
-|------|---------------|--------|
-| 主机名 | `--hostname` | 自动检测 |
-| SSID | `--ssid` | `PiHotspot` |
-| WiFi 密码 | `--password` | 8 位随机 |
-| 热点 IP | `--ip` | `192.168.4.1` |
-| 运行用户 | `--user` | `$SUDO_USER` |
+```bash
+# 检查 wlan0 是否为 AP 模式
+iw dev wlan0 info   # 应显示 type AP
 
-### CPU 型号
+# 如果是 managed 模式，重启 hostapd
+sudo systemctl restart hostapd.service
+sleep 2
+iw dev wlan0 info
+```
 
-`server.py` 中硬编码了 CPU 信息，需要支持不同型号时修改源码：
+### dnsmasq 启动失败
+
+系统 dnsmasq 可能已占用端口。`hotspot-start.service` 不再重复启动 dnsmasq，只负责网络和 NAT 配置。
+
+### NAT 不通
+
+```bash
+# 检查 IP 转发
+cat /proc/sys/net/ipv4/ip_forward   # 应为 1
+
+# 检查 NAT 规则
+sudo nft list table ip nat
+
+# 清理并重建
+sudo nft flush ruleset
+# 然后重启 hotspot-start.service
+sudo systemctl restart hotspot-start.service
+```
+
+### CPU 型号支持
+
+`server.py` 中硬编码了 CPU 信息，扩展时修改：
 
 | 设备 | 芯片 | CPU part | 核心 |
 |------|------|----------|------|
 | Pi 5 | BCM2712 | `0xd0b` | Cortex-A76 |
 | Pi 4 | BCM2711 | `0xd08` | Cortex-A72 |
 
-修改位置：`api/server.py` 的 `part_map` 和 `"chip"` 字段。
+修改位置：`api/server.py` 的 `part_map` 和 `get_chip()` 函数。

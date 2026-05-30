@@ -1,9 +1,0 @@
-interface={{INTERFACE}}
-driver=nl80211
-ssid={{SSID}}
-hw_mode=g
-channel={{CHANNEL}}
-wmm_enabled=0
-auth_algs=1
-ignore_broadcast_ssid=0
-{{WPA_CONFIG}}

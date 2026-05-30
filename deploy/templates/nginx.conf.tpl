@@ -9,7 +9,7 @@ server {
 
     # iOS captive portal detection
     location = /hotspot-detect.html {
-        default_type text/plain;
+        default_type text/html;
         add_header X-Redirect-Reason "Captive Portal";
         try_files /index.html =404;
     }
@@ -55,7 +55,7 @@ server {
     index index.html;
 
     location = /hotspot-detect.html {
-        default_type text/plain;
+        default_type text/html;
         try_files /index.html =404;
     }
 

@@ -144,24 +144,33 @@ ok "$DEPLOY_INTERFACE 已从 NetworkManager 释放"
 
 # ---------- 生成 hostapd 配置 ----------
 info "配置 WiFi 热点..."
-WPA_CONFIG=""
 if [[ -n "$DEPLOY_PASSWORD" ]]; then
-  WPA_CONFIG=$(cat << 'WPA'
+  cat > /etc/hostapd/hostapd.conf << HCEOF
+interface=${DEPLOY_INTERFACE}
+driver=nl80211
+ssid=${DEPLOY_SSID}
+hw_mode=g
+channel=${DEPLOY_CHANNEL}
+wmm_enabled=0
+auth_algs=1
+ignore_broadcast_ssid=0
 wpa=2
-wpa_passphrase={{PASSWORD}}
+wpa_passphrase=${DEPLOY_PASSWORD}
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
-WPA
-)
-  WPA_CONFIG="${WPA_CONFIG//\{\{PASSWORD\}\}/$DEPLOY_PASSWORD}"
+HCEOF
+else
+  cat > /etc/hostapd/hostapd.conf << HCEOF
+interface=${DEPLOY_INTERFACE}
+driver=nl80211
+ssid=${DEPLOY_SSID}
+hw_mode=g
+channel=${DEPLOY_CHANNEL}
+wmm_enabled=0
+auth_algs=1
+ignore_broadcast_ssid=0
+HCEOF
 fi
-
-sed \
-  -e "s|{{INTERFACE}}|${DEPLOY_INTERFACE}|g" \
-  -e "s|{{SSID}}|${DEPLOY_SSID}|g" \
-  -e "s|{{CHANNEL}}|${DEPLOY_CHANNEL}|g" \
-  -e "s|{{WPA_CONFIG}}|${WPA_CONFIG}|g" \
-  "${TEMPLATES_DIR}/hostapd.conf.tpl" > /etc/hostapd/hostapd.conf
 
 # 确保 DAEMON_CONF 已设置
 if grep -q '^DAEMON_CONF' /etc/default/hostapd 2>/dev/null; then
@@ -243,7 +252,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'rfkill unblock wifi && nmcli dev set ${DEPLOY_INTERFACE} managed no 2>/dev/null || true && ip link set ${DEPLOY_INTERFACE} up && ip addr add ${DEPLOY_HOTSPOT_IP}/24 dev ${DEPLOY_INTERFACE} 2>/dev/null || true && echo 1 > /proc/sys/net/ipv4/ip_forward && nft add table ip nat 2>/dev/null || true && nft add chain ip nat postrouting "{ type nat hook postrouting priority 100; policy accept; }" 2>/dev/null || true && nft add rule ip nat postrouting oifname "eth0" masquerade 2>/dev/null || true && nft add chain ip nat forward "{ type filter hook forward priority 0; policy accept; }" 2>/dev/null || true && nft add rule ip nat forward iifname "${DEPLOY_INTERFACE}" accept 2>/dev/null || true && nft add rule ip nat forward oifname "${DEPLOY_INTERFACE}" ct state established,related accept 2>/dev/null || true'
+ExecStart=/bin/sh -c 'rfkill unblock wifi && nmcli dev set ${DEPLOY_INTERFACE} managed no 2>/dev/null || true && ip link set ${DEPLOY_INTERFACE} up && (ip addr show ${DEPLOY_INTERFACE} | grep -q ${DEPLOY_HOTSPOT_IP} || ip addr add ${DEPLOY_HOTSPOT_IP}/24 dev ${DEPLOY_INTERFACE}) && echo 1 > /proc/sys/net/ipv4/ip_forward && nft flush table ip nat 2>/dev/null || true && nft add table ip nat 2>/dev/null || true && nft add chain ip nat postrouting "{ type nat hook postrouting priority 100; policy accept; }" 2>/dev/null || true && nft add chain ip nat forward "{ type filter hook forward priority 0; policy accept; }" 2>/dev/null || true && nft add rule ip nat postrouting oifname "eth0" masquerade && nft add rule ip nat forward iifname "${DEPLOY_INTERFACE}" accept && nft add rule ip nat forward oifname "${DEPLOY_INTERFACE}" ct state established,related accept'
 
 [Install]
 WantedBy=multi-user.target

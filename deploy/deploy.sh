@@ -189,6 +189,13 @@ cp "${FILES_DIR}/server.py" "${DEPLOY_PROJECT_DIR}/api/server.py"
 cp "${FILES_DIR}/index.html" "${DEPLOY_PROJECT_DIR}/www/index.html"
 cp "${FILES_DIR}/test.html" "${DEPLOY_PROJECT_DIR}/www/test.html"
 
+# 修复 hostapd 被 mask 的情况
+systemctl unmask hostapd.service 2>/dev/null || true
+
+# 修复用户主目录权限，确保 www-data 可遍历
+DEPLOY_HOME="$(eval echo "~${DEPLOY_USER}")"
+chmod o+x "${DEPLOY_HOME}" 2>/dev/null || true
+
 chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${DEPLOY_PROJECT_DIR}"
 ok "项目已部署到 ${DEPLOY_PROJECT_DIR}"
 

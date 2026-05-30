@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>smp5b09 - 硬件配置</title>
+    <title>硬件配置</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -91,7 +91,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>smp5b09</h1>
+            <h1 id="hostname">加载中...</h1>
             <div class="model" id="model">加载中...</div>
         </div>
 
@@ -180,7 +180,7 @@
         <div id="error" class="error" style="display:none"></div>
     </div>
 
-    <footer>&#x2713; smp5b09 热点服务运行中 &mdash; <span id="clock"></span></footer>
+    <footer>&#x2713; <span id="footer-host"></span> 热点服务运行中 &mdash; <span id="clock"></span></footer>
 
     <script>
         document.getElementById('clock').textContent = new Date().toLocaleString('zh-CN');
@@ -193,6 +193,8 @@
                 ]);
 
                 document.getElementById('model').textContent = hw.model;
+                document.getElementById('hostname').textContent = info.hostname;
+                document.getElementById('footer-host').textContent = info.hostname;
 
                 // CPU
                 document.getElementById('cpu-chip').textContent = hw.cpu.chip;

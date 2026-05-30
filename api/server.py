@@ -15,6 +15,7 @@ def read_file(path):
 def parse_cpuinfo():
     info = {}
     cores = 0
+    revision = ''
     try:
         for line in open('/proc/cpuinfo'):
             if line.startswith('processor'):
@@ -23,16 +24,34 @@ def parse_cpuinfo():
                 info['bogo_mips'] = line.split(':')[1].strip()
             elif line.startswith('CPU part'):
                 part = line.split(':')[1].strip()
-                part_map = {'0xd0b': 'Cortex-A76'}
+                part_map = {'0xd0b': 'Cortex-A76', '0xd08': 'Cortex-A72'}
                 info['cpu_model'] = part_map.get(part, 'Unknown')
             elif line.startswith('CPU implementer'):
                 impl = line.split(':')[1].strip()
                 impl_map = {'0x41': 'ARM'}
                 info['cpu_arch'] = impl_map.get(impl, 'Unknown')
+            elif line.startswith('Revision'):
+                revision = line.split(':')[1].strip()
     except:
         pass
     info['cores'] = cores
+    info['revision'] = revision
     return info
+
+def get_chip(model, revision):
+    bcm2712_boards = {'d05', 'e05', 'c06', 'd06', 'e06', 'c07', 'd07', 'e07'}
+    board = revision[:3].lower() if revision else ''
+    if board in bcm2712_boards or '5 Model' in model:
+        return 'BCM2712'
+    return 'BCM2711'
+
+def get_arch():
+    try:
+        arch = run('uname -m').strip()
+        arch_map = {'aarch64': 'AArch64 (ARMv8)', 'armv7l': 'ARMv7', 'armv6l': 'ARMv6', 'x86_64': 'x86_64'}
+        return arch_map.get(arch, arch)
+    except:
+        return 'Unknown'
 
 def get_hardware():
     cpu_info = parse_cpuinfo()
@@ -92,25 +111,18 @@ def get_hardware():
     except:
         pass
 
-    revision = ''
-    try:
-        for line in open('/proc/cpuinfo'):
-            if line.startswith('Revision'):
-                revision = line.split(':')[1].strip()
-                break
-    except:
-        pass
+    revision = cpu_info.get('revision', '')
 
     data = {
         "model": model,
         "revision": revision,
         "serial": serial,
         "cpu": {
-            "chip": "BCM2712",
-            "cores": cpu_info.get('cores', 4),
-            "model": cpu_info.get('cpu_model', 'Cortex-A76'),
-            "architecture": "AArch64 (ARMv8)",
-            "bogo_mips": cpu_info.get('bogo_mips', '108.00'),
+            "chip": get_chip(model, revision),
+            "cores": cpu_info.get('cores', 0),
+            "model": cpu_info.get('cpu_model', 'Unknown'),
+            "architecture": get_arch(),
+            "bogo_mips": cpu_info.get('bogo_mips', 'Unknown'),
         },
         "memory": {
             "total_kb": mem_kb,

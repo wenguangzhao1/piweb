@@ -53,7 +53,7 @@ sudo DEPLOY_HOSTNAME=mypi DEPLOY_SSID=MyHotspot bash deploy/deploy.sh
 | Param | Env Var | Default | Description |
 |-------|---------|---------|-------------|
 | `--hostname` | `$DEPLOY_HOSTNAME` | auto-detect | Device hostname |
-| `--ssid` | `$DEPLOY_SSID` | `PiHotspot` | WiFi SSID |
+| `--ssid` | `$DEPLOY_SSID` | `$(hostname)` | WiFi SSID (default to device hostname) |
 | `--password` | `$DEPLOY_PASSWORD` | (none) | WiFi password (empty = open) |
 | `--ip` | `$DEPLOY_HOTSPOT_IP` | `192.168.4.1` | Hotspot IP |
 | `--user` | `$DEPLOY_USER` | `$SUDO_USER` | API server run-as user |
@@ -65,7 +65,7 @@ sudo DEPLOY_HOSTNAME=mypi DEPLOY_SSID=MyHotspot bash deploy/deploy.sh
 
 1. **System check** — reads `/etc/os-release`, `/sys/firmware/devicetree/base/model`, verifies wlan0 exists
 2. **Package install** — `nginx hostapd dnsmasq libssl3t64 iproute2` via apt
-3. **SSL cert** — self-signed x509 at `/etc/ssl/private/captive.{crt,key}` (10-year, skips if exists)
+3. **SSL cert** — self-signed x509 at `/etc/ssl/private/captive.{crt,key}` (10-year, regenerates if 0-byte or missing); sets `ssl-cert` group ownership, `chmod 644/640`, adds www-data to ssl-cert group
 4. **NetworkManager release** — writes `/etc/NetworkManager/conf.d/unmanage-wlan0.conf` to free wlan0
 5. **Config generation** — writes hostapd config inline (heredoc), renders dnsmasq/nginx templates via `sed`
 6. **File deploy** — copies `deploy/files/*` to `DEPLOY_PROJECT_DIR`
@@ -86,7 +86,7 @@ dnsmasq uses `address=/#/192.168.4.1` to wildcard-resolve ALL DNS queries to the
 
 | Platform | URL | Response |
 |----------|-----|----------|
-| iOS | `/hotspot-detect.html` | Returns full index.html HTML (triggers browser popup) |
+| iOS | `/hotspot-detect.html` | Returns full index.html HTML with `text/html` Content-Type (triggers browser popup) |
 | Android | `/generate_204` | HTTP 204 |
 | Windows | `/connecttest.txt` | `Success` |
 | Windows | `/ncsi.txt` | `Microsoft NCSI` |
@@ -107,9 +107,10 @@ Hardcoded in `server.py` (both `api/` and `deploy/files/` must stay in sync):
 - **wlan0 type=managed (not AP)** — hostapd started but interface not in AP mode. Fix: `systemctl restart hostapd.service`, wait 2s, verify `iw dev wlan0 info` shows `type AP`
 - **dnsmasq bind error** — system dnsmasq already running. hotspot-start.service does NOT start dnsmasq (only network/NAT)
 - **No SSID visible** — restart hostapd.service; check `iw dev wlan0 info`
-- **NAT not working** — nft rules duplicated. Fix: `nft flush ruleset`, restart hotspot-start.service
+- **NAT not working** — nft rules missing or broken. Fix: `nft flush ruleset`, restart hotspot-start.service
 - **hostapd masked** — `systemctl unmask hostapd.service` (deploy.sh handles this, but manual fix may be needed)
 - **403 on web page** — user home dir not world-executable. Fix: `chmod o+x ~$user` (deploy.sh handles this)
+- **nginx fails to start (SSL permission denied)** — `/etc/ssl/private/captive.crt` not readable by www-data. Fix: regenerate certs, ensure `ssl-cert` group, add www-data to ssl-cert
 - **Source/deploy out of sync** — always `diff` or `cp` from `api/`/`www/` to `deploy/files/` after edits
 
 ## Claude Code Skill

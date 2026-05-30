@@ -119,7 +119,8 @@ done
 
 # ---------- 生成 SSL 证书 ----------
 SSL_DIR="/etc/ssl/private"
-if [[ ! -f "$SSL_DIR/captive.crt" ]] || [[ ! -f "$SSL_DIR/captive.key" ]]; then
+if [[ ! -f "$SSL_DIR/captive.crt" ]] || [[ ! -s "$SSL_DIR/captive.crt" ]] || \
+   [[ ! -f "$SSL_DIR/captive.key" ]] || [[ ! -s "$SSL_DIR/captive.key" ]]; then
   info "生成自签 SSL 证书..."
   openssl req -x509 -nodes -days 3650 \
     -newkey rsa:2048 \
@@ -130,6 +131,13 @@ if [[ ! -f "$SSL_DIR/captive.crt" ]] || [[ ! -f "$SSL_DIR/captive.key" ]]; then
 else
   ok "SSL 证书已存在"
 fi
+
+# 修复证书权限：www-data 可通过 ssl-cert 组读取
+chgrp ssl-cert "$SSL_DIR/captive.crt" "$SSL_DIR/captive.key"
+chmod 644 "$SSL_DIR/captive.crt"
+chmod 640 "$SSL_DIR/captive.key"
+chmod 750 "$SSL_DIR"
+usermod -aG ssl-cert www-data 2>/dev/null || true
 
 # ---------- 释放 wlan0 控制权 ----------
 info "配置 NetworkManager 忽略 $DEPLOY_INTERFACE..."
